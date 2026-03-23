@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5050:5050"
+    volumes:
+      # Mount the entire project so edits are reflected without rebuild
+      - .:/app
+      # Prevent the host venv from shadowing the container's installed packages
+      - /app/deap-venv
+    environment:
+      - PYTHONUNBUFFERED=1

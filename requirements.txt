@@ -1,0 +1,4 @@
+deap>=1.4.1
+flask>=3.0.0
+gunicorn>=21.0.0
+numpy>=1.26.0
