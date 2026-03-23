@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DEAP — Genetic Algorithm Explorer</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#6366f1', dark: '#4f46e5' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; }
+    .param-label { font-size: .75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing:.05em; }
+    input[type=range] { accent-color: #6366f1; }
+    .tab-btn { transition: all .15s; }
+    .tab-btn.active { background:#6366f1; color:#fff; }
+    .tab-btn:not(.active):hover { background:#334155; }
+    canvas { max-height: 300px; }
+    .bit-grid { display:flex; flex-wrap:wrap; gap:2px; }
+    .bit { width:10px; height:10px; border-radius:2px; }
+    .bit-1 { background:#6366f1; }
+    .bit-0 { background:#334155; }
+    .spinner { border:3px solid #334155; border-top-color:#6366f1; border-radius:50%; width:28px; height:28px; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .code-block { background:#0f172a; border:1px solid #334155; border-radius:.5rem; font-family:monospace; font-size:.78rem; line-height:1.6; overflow-x:auto; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ── Header ── -->
+<header class="border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">GA</div>
+    <div>
+      <h1 class="text-lg font-semibold text-white">DEAP — Genetic Algorithm Explorer</h1>
+      <p class="text-xs text-slate-400">Interactive demos powered by the DEAP Python library</p>
+    </div>
+  </div>
+  <a href="https://deap.readthedocs.io" target="_blank"
+     class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">docs ↗</a>
+</header>
+
+<!-- ── Tabs ── -->
+<div class="px-6 pt-4 flex gap-2">
+  <button class="tab-btn active px-4 py-2 rounded-lg text-sm font-medium" data-tab="onemax">OneMax Problem</button>
+  <button class="tab-btn px-4 py-2 rounded-lg text-sm font-medium" data-tab="funcopt">Function Optimisation</button>
+  <button class="tab-btn px-4 py-2 rounded-lg text-sm font-medium" data-tab="trading">Trading Strategy</button>
+  <button class="tab-btn px-4 py-2 rounded-lg text-sm font-medium" data-tab="learn">How it Works</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB: ONEMAX
+════════════════════════════════════════════════════════ -->
+<div id="tab-onemax" class="tab-content p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+  <!-- Controls -->
+  <div class="card rounded-xl p-5 space-y-4">
+    <h2 class="font-semibold text-white">Parameters</h2>
+    <p class="text-xs text-slate-400">Evolve a binary string to maximise the count of 1s — the classic GA baseline.</p>
+
+    <div id="om-params" class="space-y-4">
+      <!-- sliders injected by JS -->
+    </div>
+
+    <button id="run-onemax"
+      class="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+      <span>Run Evolution</span>
+      <div class="spinner hidden" id="om-spinner"></div>
+    </button>
+
+    <!-- Result badge -->
+    <div id="om-result" class="hidden rounded-lg bg-slate-800 p-3 text-center">
+      <div class="text-xs text-slate-400 mb-1">Best Fitness</div>
+      <div id="om-best" class="text-2xl font-bold text-indigo-400"></div>
+      <div class="text-xs text-slate-500 mt-1" id="om-pct"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="lg:col-span-2 space-y-5">
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-3">Fitness over Generations</h3>
+      <canvas id="om-chart"></canvas>
+    </div>
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-2">Best Individual (genome visualisation)</h3>
+      <p class="text-xs text-slate-500 mb-3">Each cell = one gene. <span class="inline-block w-3 h-3 rounded-sm bg-indigo-500 align-middle"></span> = 1&nbsp;&nbsp;<span class="inline-block w-3 h-3 rounded-sm bg-slate-600 align-middle"></span> = 0</p>
+      <div id="om-genome" class="bit-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB: FUNCOPT
+════════════════════════════════════════════════════════ -->
+<div id="tab-funcopt" class="tab-content p-6 grid grid-cols-1 lg:grid-cols-3 gap-5 hidden">
+
+  <div class="card rounded-xl p-5 space-y-4">
+    <h2 class="font-semibold text-white">Parameters</h2>
+    <p class="text-xs text-slate-400">Minimise the <strong class="text-slate-300">Rastrigin function</strong> in 2D — a classic multi-modal benchmark full of local minima.</p>
+    <div id="fo-params" class="space-y-4"></div>
+
+    <button id="run-funcopt"
+      class="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+      <span>Run Evolution</span>
+      <div class="spinner hidden" id="fo-spinner"></div>
+    </button>
+
+    <div id="fo-result" class="hidden rounded-lg bg-slate-800 p-3 text-center space-y-1">
+      <div class="text-xs text-slate-400">Best (x, y) → f(x,y)</div>
+      <div id="fo-best" class="text-lg font-bold text-indigo-400"></div>
+      <div class="text-xs text-slate-500">Global minimum is 0 at (0, 0)</div>
+    </div>
+  </div>
+
+  <div class="lg:col-span-2 space-y-5">
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-3">Fitness (lower = better) over Generations</h3>
+      <canvas id="fo-chart"></canvas>
+    </div>
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-1">Population Snapshots</h3>
+      <p class="text-xs text-slate-500 mb-3">Each frame shows where individuals are in the search space.</p>
+      <div class="flex gap-3 items-center mb-3">
+        <button id="fo-play" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs font-semibold">▶ Play</button>
+        <span class="text-xs text-slate-400">Frame: <span id="fo-frame-label">—</span></span>
+        <input type="range" id="fo-scrub" class="flex-1" min="0" max="0" value="0" />
+      </div>
+      <canvas id="fo-scatter" style="max-height:280px;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB: LEARN
+════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════
+     TAB: TRADING
+════════════════════════════════════════════════════════ -->
+<div id="tab-trading" class="tab-content p-6 grid grid-cols-1 lg:grid-cols-3 gap-5 hidden">
+
+  <!-- Controls -->
+  <div class="card rounded-xl p-5 space-y-4">
+    <h2 class="font-semibold text-white">Strategy Optimiser</h2>
+    <p class="text-xs text-slate-400">
+      GA evolves MA crossover + RSI exit parameters.
+      Fitness = <strong class="text-slate-300">Sharpe ratio</strong> (maximise) +
+      <strong class="text-slate-300">max drawdown</strong> (minimise) via NSGA-II.
+      Walk-forward validation separates in-sample from out-of-sample.
+    </p>
+
+    <div id="tr-params" class="space-y-4"></div>
+
+    <button id="run-trading"
+      class="w-full mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+      <span>Run Optimiser</span>
+      <div class="spinner hidden" id="tr-spinner"></div>
+    </button>
+
+    <!-- Best params (last window) -->
+    <div id="tr-result" class="hidden space-y-3">
+      <div class="text-xs text-slate-400 font-semibold uppercase tracking-wide">Best Strategy (last window)</div>
+      <table id="tr-params-table" class="w-full text-xs">
+        <tbody class="divide-y divide-slate-700"></tbody>
+      </table>
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <div class="rounded-lg bg-slate-800 p-2 text-center">
+          <div class="text-xs text-slate-400">Avg OOS Sharpe</div>
+          <div id="tr-avg-oos-sharpe" class="text-lg font-bold text-green-400"></div>
+        </div>
+        <div class="rounded-lg bg-slate-800 p-2 text-center">
+          <div class="text-xs text-slate-400">Avg OOS Drawdown</div>
+          <div id="tr-avg-oos-dd" class="text-lg font-bold text-orange-400"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="lg:col-span-2 space-y-5">
+
+    <!-- Walk-forward comparison -->
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-1">Walk-Forward: In-Sample vs Out-of-Sample Sharpe</h3>
+      <p class="text-xs text-slate-500 mb-3">High IS → Low OOS gap reveals overfitting.</p>
+      <canvas id="tr-wf-chart" style="max-height:220px;"></canvas>
+    </div>
+
+    <!-- OOS equity curve -->
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-1">Combined Out-of-Sample Equity Curve</h3>
+      <p class="text-xs text-slate-500 mb-3">Strategy performance on data the GA never trained on.</p>
+      <canvas id="tr-equity-chart" style="max-height:220px;"></canvas>
+    </div>
+
+    <!-- Pareto front -->
+    <div class="card rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-1">Pareto Front — Sharpe vs Max Drawdown</h3>
+      <p class="text-xs text-slate-500 mb-3">Non-dominated solutions from the last window's final generation. Each point is a viable strategy.</p>
+      <canvas id="tr-pareto-chart" style="max-height:220px;"></canvas>
+    </div>
+
+  </div>
+</div>
+
+<div id="tab-learn" class="tab-content p-6 hidden max-w-3xl">
+  <div class="space-y-6 text-sm text-slate-300 leading-relaxed">
+
+    <div class="card rounded-xl p-6">
+      <h2 class="text-white font-semibold text-base mb-3">What is a Genetic Algorithm?</h2>
+      <p>Genetic Algorithms (GAs) are search & optimisation algorithms inspired by natural evolution. They work by maintaining a <em>population</em> of candidate solutions and applying <em>selection</em>, <em>crossover</em>, and <em>mutation</em> to improve them over generations.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="card rounded-xl p-4">
+        <div class="text-indigo-400 font-bold mb-1">Selection</div>
+        <p class="text-xs text-slate-400">Better individuals are more likely to reproduce. Tournament selection picks the best out of a random subset of size <code>k</code>.</p>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-green-400 font-bold mb-1">Crossover (Mate)</div>
+        <p class="text-xs text-slate-400">Two parents swap parts of their genome. Two-point crossover splits each parent at two random points and exchanges the middle segments.</p>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-orange-400 font-bold mb-1">Mutation</div>
+        <p class="text-xs text-slate-400">Random small changes prevent the population from converging prematurely and help escape local optima. Controlled by <code>mut_prob</code>.</p>
+      </div>
+    </div>
+
+    <div class="card rounded-xl p-6">
+      <h2 class="text-white font-semibold mb-2">Key Hyperparameters to Tune</h2>
+      <table class="w-full text-xs">
+        <thead><tr class="text-slate-500"><th class="text-left pb-2">Parameter</th><th class="text-left pb-2">Effect</th><th class="text-left pb-2">Typical range</th></tr></thead>
+        <tbody class="divide-y divide-slate-700">
+          <tr class="py-1"><td class="py-1.5 pr-4 text-white">Population size</td><td class="pr-4 text-slate-400">Diversity vs. compute cost</td><td class="text-slate-400">50–500</td></tr>
+          <tr><td class="py-1.5 pr-4 text-white">Crossover prob.</td><td class="pr-4 text-slate-400">How often parents exchange genes</td><td class="text-slate-400">0.5–0.9</td></tr>
+          <tr><td class="py-1.5 pr-4 text-white">Mutation prob.</td><td class="pr-4 text-slate-400">Exploration vs. exploitation</td><td class="text-slate-400">0.01–0.3</td></tr>
+          <tr><td class="py-1.5 pr-4 text-white">Generations</td><td class="pr-4 text-slate-400">Budget for improvement</td><td class="text-slate-400">20–500+</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card rounded-xl p-6 space-y-4">
+      <h2 class="text-white font-semibold text-base">The DEAP Loop</h2>
+      <div class="code-block p-4">
+<pre><span class="text-indigo-400">from</span> deap <span class="text-indigo-400">import</span> base, creator, tools
+
+<span class="text-slate-500"># 1. Define what "fitness" means</span>
+creator.create(<span class="text-green-400">"FitnessMax"</span>, base.Fitness, weights=(<span class="text-orange-400">1.0</span>,))
+creator.create(<span class="text-green-400">"Individual"</span>, list, fitness=creator.FitnessMax)
+
+<span class="text-slate-500"># 2. Register operators in a Toolbox</span>
+tb = base.Toolbox()
+tb.register(<span class="text-green-400">"attr_bool"</span>, random.randint, <span class="text-orange-400">0</span>, <span class="text-orange-400">1</span>)
+tb.register(<span class="text-green-400">"individual"</span>, tools.initRepeat,
+            creator.Individual, tb.attr_bool, n=<span class="text-orange-400">50</span>)
+tb.register(<span class="text-green-400">"population"</span>, tools.initRepeat, list, tb.individual)
+
+<span class="text-slate-500"># 3. Evaluation function</span>
+<span class="text-indigo-400">def</span> <span class="text-yellow-400">evaluate</span>(ind):
+    <span class="text-indigo-400">return</span> (sum(ind),)   <span class="text-slate-500"># OneMax = count of 1s</span>
+
+tb.register(<span class="text-green-400">"evaluate"</span>, evaluate)
+tb.register(<span class="text-green-400">"mate"</span>,    tools.cxTwoPoint)
+tb.register(<span class="text-green-400">"mutate"</span>,  tools.mutFlipBit, indpb=<span class="text-orange-400">0.05</span>)
+tb.register(<span class="text-green-400">"select"</span>,  tools.selTournament, tournsize=<span class="text-orange-400">3</span>)
+
+<span class="text-slate-500"># 4. Run the evolutionary loop</span>
+pop = tb.population(n=<span class="text-orange-400">100</span>)
+<span class="text-indigo-400">for</span> gen <span class="text-indigo-400">in</span> range(<span class="text-orange-400">40</span>):
+    offspring = tb.select(pop, len(pop))
+    offspring = list(map(tb.clone, offspring))
+    <span class="text-indigo-400">for</span> c1, c2 <span class="text-indigo-400">in</span> zip(offspring[::2], offspring[1::2]):
+        <span class="text-indigo-400">if</span> random.random() &lt; <span class="text-orange-400">0.7</span>: tb.mate(c1, c2)
+    <span class="text-indigo-400">for</span> mut <span class="text-indigo-400">in</span> offspring:
+        <span class="text-indigo-400">if</span> random.random() &lt; <span class="text-orange-400">0.2</span>: tb.mutate(mut)
+    pop[:] = offspring</pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── JS ─────────────────────────────────────────────────────────────────── -->
+<script>
+const PALETTE = {
+  indigo: '#6366f1',
+  green:  '#22c55e',
+  slate:  '#475569',
+  orange: '#f97316',
+};
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+$('.tab-btn').on('click', function () {
+  $('.tab-btn').removeClass('active');
+  $(this).addClass('active');
+  const t = $(this).data('tab');
+  $('.tab-content').addClass('hidden');
+  $(`#tab-${t}`).removeClass('hidden');
+});
+
+// ── Slider builder ─────────────────────────────────────────────────────────
+function buildSliders(containerId, defs) {
+  const $c = $(`#${containerId}`);
+  defs.forEach(d => {
+    $c.append(`
+      <div>
+        <div class="flex justify-between mb-1">
+          <span class="param-label">${d.label}</span>
+          <span class="text-xs text-white font-mono" id="${d.id}-val">${d.value}</span>
+        </div>
+        <input type="range" id="${d.id}" class="w-full"
+               min="${d.min}" max="${d.max}" step="${d.step}" value="${d.value}" />
+        ${d.hint ? `<div class="text-xs text-slate-500 mt-1">${d.hint}</div>` : ''}
+      </div>
+    `);
+    $(`#${d.id}`).on('input', function () { $(`#${d.id}-val`).text(this.value); });
+  });
+}
+
+buildSliders('om-params', [
+  { id:'om-pop',  label:'Population size', min:20,  max:300, step:10,  value:100 },
+  { id:'om-gen',  label:'Generations',     min:10,  max:100, step:5,   value:40 },
+  { id:'om-cx',   label:'Crossover prob.', min:0.1, max:1.0, step:0.05,value:0.7 },
+  { id:'om-mut',  label:'Mutation prob.',  min:0.0, max:0.5, step:0.05,value:0.2 },
+  { id:'om-size', label:'Genome length',   min:10,  max:100, step:5,   value:50,
+    hint:'Length of the binary string to optimise.' },
+  { id:'om-seed', label:'Random seed',     min:0,   max:99,  step:1,   value:42 },
+]);
+
+buildSliders('fo-params', [
+  { id:'fo-pop',   label:'Population size', min:20,  max:300, step:10,  value:100 },
+  { id:'fo-gen',   label:'Generations',     min:20,  max:200, step:10,  value:60 },
+  { id:'fo-cx',    label:'Crossover prob.', min:0.1, max:1.0, step:0.05,value:0.6 },
+  { id:'fo-mut',   label:'Mutation prob.',  min:0.0, max:0.5, step:0.05,value:0.3 },
+  { id:'fo-sigma', label:'Mutation σ',      min:0.05,max:1.5, step:0.05,value:0.3,
+    hint:'Std-dev of Gaussian noise added per mutation.' },
+  { id:'fo-seed',  label:'Random seed',     min:0,   max:99,  step:1,   value:42 },
+]);
+
+// ── Chart helpers ──────────────────────────────────────────────────────────
+let omChart = null, foChart = null, scatterChart = null;
+let foSnapshots = [], foPlayTimer = null, foFrame = 0;
+
+function destroyChart(c) { if (c) c.destroy(); }
+
+function lineChartCfg(labels, datasets) {
+  return {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      animation: { duration: 400 },
+      responsive: true,
+      plugins: { legend: { labels: { color:'#94a3b8', boxWidth:12 } } },
+      scales: {
+        x: { ticks:{ color:'#64748b' }, grid:{ color:'#1e293b' } },
+        y: { ticks:{ color:'#64748b' }, grid:{ color:'#334155' } },
+      }
+    }
+  };
+}
+
+// ── OneMax run ─────────────────────────────────────────────────────────────
+$('#run-onemax').on('click', function () {
+  const payload = {
+    pop_size: +$('#om-pop').val(),
+    n_gen:    +$('#om-gen').val(),
+    cx_prob:  +$('#om-cx').val(),
+    mut_prob: +$('#om-mut').val(),
+    ind_size: +$('#om-size').val(),
+    seed:     +$('#om-seed').val(),
+  };
+
+  $('#om-spinner').removeClass('hidden');
+  $('#run-onemax span').text('Running…');
+  $('#run-onemax').prop('disabled', true);
+
+  $.ajax({
+    url: '/api/onemax', method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    success(res) {
+      const gens   = res.history.map(h => h.gen);
+      const avgs   = res.history.map(h => h.avg);
+      const maxes  = res.history.map(h => h.max);
+
+      destroyChart(omChart);
+      omChart = new Chart($('#om-chart')[0], lineChartCfg(gens, [
+        { label:'Max Fitness', data:maxes, borderColor:PALETTE.indigo, backgroundColor:'#6366f130',
+          fill:true, tension:.4, pointRadius:2 },
+        { label:'Avg Fitness', data:avgs,  borderColor:PALETTE.slate,
+          borderDash:[4,3], tension:.4, pointRadius:0 },
+      ]));
+
+      // Genome visualisation
+      const $g = $('#om-genome').empty();
+      res.best_individual.forEach(b => {
+        $g.append(`<div class="bit ${b ? 'bit-1' : 'bit-0'}" title="${b}"></div>`);
+      });
+
+      const pct = ((res.best_fitness / res.ind_size) * 100).toFixed(1);
+      $('#om-best').text(`${res.best_fitness} / ${res.ind_size}`);
+      $('#om-pct').text(`${pct}% ones`);
+      $('#om-result').removeClass('hidden');
+    },
+    complete() {
+      $('#om-spinner').addClass('hidden');
+      $('#run-onemax span').text('Run Evolution');
+      $('#run-onemax').prop('disabled', false);
+    },
+    error(xhr) { alert('Server error: ' + xhr.responseText); }
+  });
+});
+
+// ── FuncOpt run ────────────────────────────────────────────────────────────
+$('#run-funcopt').on('click', function () {
+  const payload = {
+    pop_size: +$('#fo-pop').val(),
+    n_gen:    +$('#fo-gen').val(),
+    cx_prob:  +$('#fo-cx').val(),
+    mut_prob: +$('#fo-mut').val(),
+    sigma:    +$('#fo-sigma').val(),
+    seed:     +$('#fo-seed').val(),
+  };
+
+  $('#fo-spinner').removeClass('hidden');
+  $('#run-funcopt span').text('Running…');
+  $('#run-funcopt').prop('disabled', true);
+
+  $.ajax({
+    url: '/api/funcopt', method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    success(res) {
+      const gens = res.history.map(h => h.gen);
+      const mins = res.history.map(h => h.min);
+      const avgs = res.history.map(h => h.avg);
+
+      destroyChart(foChart);
+      foChart = new Chart($('#fo-chart')[0], lineChartCfg(gens, [
+        { label:'Best Fitness', data:mins, borderColor:PALETTE.green, backgroundColor:'#22c55e20',
+          fill:true, tension:.4, pointRadius:2 },
+        { label:'Avg Fitness',  data:avgs, borderColor:PALETTE.slate,
+          borderDash:[4,3], tension:.4, pointRadius:0 },
+      ]));
+
+      $('#fo-best').text(`(${res.best_x}, ${res.best_y}) → ${res.best_fitness}`);
+      $('#fo-result').removeClass('hidden');
+
+      // Scatter snapshots
+      foSnapshots = res.history.filter(h => h.population);
+      foFrame = 0;
+      const nf = foSnapshots.length - 1;
+      $('#fo-scrub').attr('max', nf).val(0);
+      if (foSnapshots.length) renderScatter(0, res.bounds);
+
+      $('#fo-scrub').off('input').on('input', function () {
+        clearInterval(foPlayTimer); foPlayTimer = null;
+        $('#fo-play').text('▶ Play');
+        renderScatter(+this.value, res.bounds);
+      });
+
+      $('#fo-play').off('click').on('click', function () {
+        if (foPlayTimer) {
+          clearInterval(foPlayTimer); foPlayTimer = null;
+          $(this).text('▶ Play');
+        } else {
+          let f = foFrame;
+          $(this).text('⏸ Pause');
+          foPlayTimer = setInterval(() => {
+            f = (f + 1) % foSnapshots.length;
+            foFrame = f;
+            $('#fo-scrub').val(f);
+            renderScatter(f, res.bounds);
+            if (f === foSnapshots.length - 1) {
+              clearInterval(foPlayTimer); foPlayTimer = null;
+              $('#fo-play').text('▶ Play');
+            }
+          }, 500);
+        }
+      });
+    },
+    complete() {
+      $('#fo-spinner').addClass('hidden');
+      $('#run-funcopt span').text('Run Evolution');
+      $('#run-funcopt').prop('disabled', false);
+    },
+    error(xhr) { alert('Server error: ' + xhr.responseText); }
+  });
+});
+
+// ── Trading run ────────────────────────────────────────────────────────────
+buildSliders('tr-params', [
+  { id:'tr-pop',     label:'Population size',     min:20,  max:150, step:10,   value:50 },
+  { id:'tr-gen',     label:'Generations',          min:10,  max:80,  step:5,    value:25 },
+  { id:'tr-cx',      label:'Crossover prob.',      min:0.1, max:1.0, step:0.05, value:0.65 },
+  { id:'tr-mut',     label:'Mutation prob.',       min:0.1, max:0.5, step:0.05, value:0.25 },
+  { id:'tr-windows', label:'Walk-forward windows', min:2,   max:6,   step:1,    value:3,
+    hint:'Each window: 300-day train → 150-day out-of-sample test.' },
+  { id:'tr-comm',    label:'Commission %',         min:0.0, max:0.5, step:0.05, value:0.1,
+    hint:'Round-trip cost per trade (%).' },
+  { id:'tr-seed',    label:'Random seed',          min:0,   max:99,  step:1,    value:42 },
+]);
+
+let trWfChart = null, trEquityChart = null, trParetoChart = null;
+
+$('#run-trading').on('click', function () {
+  const payload = {
+    pop_size:    +$('#tr-pop').val(),
+    n_gen:       +$('#tr-gen').val(),
+    cx_prob:     +$('#tr-cx').val(),
+    mut_prob:    +$('#tr-mut').val(),
+    n_wf_windows:+$('#tr-windows').val(),
+    commission:   +$('#tr-comm').val() / 100,
+    seed:        +$('#tr-seed').val(),
+  };
+
+  $('#tr-spinner').removeClass('hidden');
+  $('#run-trading span').text('Optimising…');
+  $('#run-trading').prop('disabled', true);
+
+  $.ajax({
+    url: '/api/trading', method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    success(res) {
+      const wfr = res.wf_results;
+      const labels = wfr.map(w => `Window ${w.window}`);
+
+      // ── Walk-forward grouped bar ──
+      destroyChart(trWfChart);
+      trWfChart = new Chart($('#tr-wf-chart')[0], {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label:'In-Sample Sharpe',     data: wfr.map(w => w.is_sharpe),
+              backgroundColor:'#6366f1cc', borderRadius:4 },
+            { label:'Out-of-Sample Sharpe', data: wfr.map(w => w.oos_sharpe),
+              backgroundColor:'#22c55ecc', borderRadius:4 },
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend:{ labels:{ color:'#94a3b8', boxWidth:12 } } },
+          scales: {
+            x: { ticks:{color:'#64748b'}, grid:{color:'#1e293b'} },
+            y: { ticks:{color:'#64748b'}, grid:{color:'#334155'},
+                 title:{display:true,text:'Sharpe Ratio',color:'#94a3b8'} }
+          }
+        }
+      });
+
+      // ── OOS Equity curve ──
+      const eqLabels = res.combined_equity.map((_, i) => i);
+      destroyChart(trEquityChart);
+      trEquityChart = new Chart($('#tr-equity-chart')[0], lineChartCfg(eqLabels, [
+        { label:'OOS Equity', data: res.combined_equity,
+          borderColor: PALETTE.green, backgroundColor:'#22c55e18',
+          fill:true, tension:.3, pointRadius:0 },
+        { label:'Buy & Hold (flat)', data: eqLabels.map(() => 1.0),
+          borderColor:'#475569', borderDash:[4,3], pointRadius:0 },
+      ]));
+
+      // ── Pareto front scatter ──
+      const pf = res.pareto_front;
+      destroyChart(trParetoChart);
+      trParetoChart = new Chart($('#tr-pareto-chart')[0], {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label:'Non-dominated strategies',
+            data: pf.map(p => ({ x: p.drawdown, y: p.sharpe })),
+            backgroundColor:'#6366f1bb',
+            pointRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend:{ labels:{ color:'#94a3b8', boxWidth:12 } },
+                     tooltip:{ callbacks:{ label: ctx => `Sharpe ${ctx.parsed.y.toFixed(2)}, DD ${(ctx.parsed.x*100).toFixed(1)}%` } } },
+          scales: {
+            x: { ticks:{color:'#64748b', callback: v => (v*100).toFixed(0)+'%'},
+                 grid:{color:'#334155'}, title:{display:true,text:'Max Drawdown',color:'#94a3b8'} },
+            y: { ticks:{color:'#64748b'}, grid:{color:'#334155'},
+                 title:{display:true,text:'Sharpe Ratio',color:'#94a3b8'} },
+          }
+        }
+      });
+
+      // ── Best params table (last window) ──
+      const last = wfr[wfr.length - 1];
+      const bp   = last.best_params;
+      const rows = [
+        ['MA Fast',        bp.ma_fast + ' bars'],
+        ['MA Slow',        bp.ma_slow + ' bars'],
+        ['RSI Period',     bp.rsi_period + ' bars'],
+        ['RSI Exit',       '>' + bp.rsi_ob],
+        ['Stop Loss',      (bp.stop_loss_pct * 100).toFixed(1) + '%'],
+        ['Take Profit',    (bp.take_profit_pct * 100).toFixed(1) + '%'],
+        ['OOS Trades',     last.oos_trades],
+      ];
+      $('#tr-params-table tbody').empty();
+      rows.forEach(([k, v]) => {
+        $('#tr-params-table tbody').append(
+          `<tr><td class="py-1.5 pr-4 text-slate-400">${k}</td><td class="text-white font-mono">${v}</td></tr>`
+        );
+      });
+
+      const avgOosSharpe = (wfr.reduce((s, w) => s + w.oos_sharpe, 0) / wfr.length).toFixed(2);
+      const avgOosDd     = ((wfr.reduce((s, w) => s + w.oos_drawdown, 0) / wfr.length) * 100).toFixed(1) + '%';
+      $('#tr-avg-oos-sharpe').text(avgOosSharpe);
+      $('#tr-avg-oos-dd').text(avgOosDd);
+      $('#tr-result').removeClass('hidden');
+    },
+    complete() {
+      $('#tr-spinner').addClass('hidden');
+      $('#run-trading span').text('Run Optimiser');
+      $('#run-trading').prop('disabled', false);
+    },
+    error(xhr) { alert('Server error: ' + xhr.responseText); }
+  });
+});
+
+function renderScatter(idx, bounds) {
+  const snap = foSnapshots[idx];
+  if (!snap) return;
+  foFrame = idx;
+  $('#fo-frame-label').text(`Gen ${snap.gen}`);
+
+  const pts = snap.population.map(([x, y]) => ({ x, y }));
+
+  destroyChart(scatterChart);
+  scatterChart = new Chart($('#fo-scatter')[0], {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label:'Individuals', data: pts,
+          backgroundColor: '#6366f1aa', pointRadius: 4 },
+        { label:'Global min (0,0)', data:[{x:0,y:0}],
+          backgroundColor:'#22c55e', pointRadius:8, pointStyle:'star' },
+      ]
+    },
+    options: {
+      animation: { duration: 200 },
+      responsive: true,
+      plugins: { legend: { labels:{ color:'#94a3b8', boxWidth:12 } } },
+      scales: {
+        x: { min:bounds[0], max:bounds[1], ticks:{color:'#64748b'}, grid:{color:'#334155'}, title:{display:true,text:'x',color:'#94a3b8'} },
+        y: { min:bounds[0], max:bounds[1], ticks:{color:'#64748b'}, grid:{color:'#334155'}, title:{display:true,text:'y',color:'#94a3b8'} },
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
